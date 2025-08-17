@@ -252,17 +252,29 @@ class NovelEngine {
         // Display text with typewriter effect
         this.displayText(scene.text);
         
-        // Display choices or next button
-        if (scene.choices && scene.choices.length > 0) {
+        // Check if this is an ending scene (no nextScene and no choices)
+        const isEnding = !scene.nextScene && (!scene.choices || scene.choices.length === 0);
+        
+        if (isEnding) {
+            // This is an ending - show completion after text is displayed
+            setTimeout(() => {
+                this.showEndingOptions();
+            }, this.skipMode ? 100 : (scene.text.length * this.typewriterSpeed + 1000));
+            document.getElementById('next-button').classList.add('hidden');
+            document.getElementById('choices-container').classList.add('hidden');
+        } else if (scene.choices && scene.choices.length > 0) {
+            // Show choices
             this.displayChoices(scene.choices);
             document.getElementById('next-button').classList.add('hidden');
-        } else {
+        } else if (scene.nextScene) {
+            // Show next button
             document.getElementById('choices-container').classList.add('hidden');
-            if (scene.nextScene) {
-                document.getElementById('next-button').classList.remove('hidden');
-            } else {
-                document.getElementById('next-button').classList.add('hidden');
-            }
+            document.getElementById('next-button').classList.remove('hidden');
+        } else {
+            // Fallback - should not happen but just in case
+            document.getElementById('next-button').classList.add('hidden');
+            document.getElementById('choices-container').classList.add('hidden');
+            setTimeout(() => this.showEndingOptions(), 2000);
         }
     }
     
@@ -272,7 +284,7 @@ class NovelEngine {
         
         if (this.skipMode) {
             textElement.textContent = text;
-            if (this.autoMode && this.currentScene.nextScene) {
+            if (this.autoMode && this.currentScene && this.currentScene.nextScene) {
                 setTimeout(() => this.nextScene(), 1500);
             }
         } else {
@@ -284,7 +296,7 @@ class NovelEngine {
                     charIndex++;
                 } else {
                     clearInterval(typeInterval);
-                    if (this.autoMode && this.currentScene.nextScene) {
+                    if (this.autoMode && this.currentScene && this.currentScene.nextScene) {
                         setTimeout(() => this.nextScene(), 3000);
                     }
                 }
@@ -379,16 +391,20 @@ class NovelEngine {
         }
     }
     
-    endStory() {
-        // Show completion message
+    showEndingOptions() {
         const textElement = document.getElementById('story-text');
+        const currentText = textElement.textContent;
+        
+        // Add ending options below the final text
         textElement.innerHTML = `
-            <div class="text-center py-8 fade-in">
-                <i class="fas fa-book text-4xl text-red-400 mb-4"></i>
-                <p class="text-xl mb-4">物語は終わりました</p>
-                <p class="text-gray-400 mb-6">他の怪談話もお楽しみください</p>
-                <button onclick="novelEngine.exitStory()" class="px-6 py-3 bg-red-800 hover:bg-red-700 rounded-lg transition">
+            <div class="mb-6">${currentText}</div>
+            <div class="text-center py-4 fade-in border-t border-gray-700">
+                <p class="text-lg text-red-400 mb-4">〜 終 〜</p>
+                <button onclick="novelEngine.exitStory()" class="px-6 py-3 bg-red-800 hover:bg-red-700 rounded-lg transition mr-4">
                     <i class="fas fa-home mr-2"></i>物語選択へ戻る
+                </button>
+                <button onclick="novelEngine.restartStory()" class="px-6 py-3 bg-gray-800 hover:bg-gray-700 rounded-lg transition">
+                    <i class="fas fa-redo mr-2"></i>最初から読む
                 </button>
             </div>
         `;
@@ -400,6 +416,17 @@ class NovelEngine {
         // Stop auto mode
         this.autoMode = false;
         this.skipMode = false;
+    }
+    
+    endStory() {
+        this.showEndingOptions();
+    }
+    
+    restartStory() {
+        if (this.currentStory) {
+            this.sceneHistory = [];
+            this.playScene(this.currentStory.scenes[0]);
+        }
     }
     
     updateBackground(backgroundUrl) {

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>エンディングテスト</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white p-8">
+    <h1 class="text-2xl mb-4">エンディング処理テスト</h1>
+    
+    <div class="space-y-4">
+        <button onclick="testEnding()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded">
+            エンディングをテスト
+        </button>
+        
+        <button onclick="testStory()" class="px-4 py-2 bg-green-600 hover:bg-green-700 rounded">
+            短いストーリーをテスト
+        </button>
+    </div>
+    
+    <div id="result" class="mt-8 p-4 bg-gray-800 rounded"></div>
+    
+    <script>
+        async function testEnding() {
+            const result = document.getElementById('result');
+            result.innerHTML = 'テスト中...';
+            
+            try {
+                // APIから最初のストーリーを取得
+                const response = await fetch('/api/stories/hanako');
+                const story = await response.json();
+                
+                // エンディングシーンを探す
+                const endingScenes = story.scenes.filter(s => !s.nextScene && (!s.choices || s.choices.length === 0));
+                
+                result.innerHTML = `
+                    <h2 class="text-xl mb-2">エンディングシーン数: ${endingScenes.length}</h2>
+                    <ul class="list-disc list-inside">
+                        ${endingScenes.map(s => `<li>${s.id}: ${s.text.substring(0, 50)}...</li>`).join('')}
+                    </ul>
+                `;
+            } catch (error) {
+                result.innerHTML = `エラー: ${error.message}`;
+            }
+        }
+        
+        async function testStory() {
+            // 実際のゲームページへ移動
+            window.location.href = '/';
+        }
+    </script>
+</body>
+</html>
