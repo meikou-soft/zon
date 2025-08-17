@@ -1,4 +1,4 @@
-// Novel Engine for Summer Horror Stories
+// Novel Engine for Summer Horror Stories - Enhanced Version
 class NovelEngine {
     constructor() {
         this.currentStory = null;
@@ -10,9 +10,67 @@ class NovelEngine {
         this.typewriterSpeed = 50;
         this.bgmPlayer = document.getElementById('bgm-player');
         this.sfxPlayer = document.getElementById('sfx-player');
+        this.loadedImages = new Set();
+        this.imageCache = {};
         
         this.initializeEventListeners();
         this.loadStories();
+        this.preloadCommonAssets();
+    }
+    
+    preloadCommonAssets() {
+        // Preload common images
+        const commonImages = [
+            '/static/images/school_hallway.jpg',
+            '/static/images/toilet.jpg',
+            '/static/images/placeholder.svg'
+        ];
+        
+        commonImages.forEach(src => {
+            const img = new Image();
+            img.onload = () => {
+                this.imageCache[src] = img;
+                this.loadedImages.add(src);
+            };
+            img.onerror = () => {
+                console.warn(`Failed to preload image: ${src}`);
+            };
+            img.src = src;
+        });
+    }
+    
+    preloadStoryAssets(story) {
+        const imagesToLoad = new Set();
+        
+        // Collect all unique images from the story
+        story.scenes.forEach(scene => {
+            if (scene.background) {
+                imagesToLoad.add(scene.background);
+            }
+        });
+        
+        // Preload images
+        const loadPromises = Array.from(imagesToLoad).map(src => {
+            if (this.loadedImages.has(src)) {
+                return Promise.resolve();
+            }
+            
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => {
+                    this.imageCache[src] = img;
+                    this.loadedImages.add(src);
+                    resolve();
+                };
+                img.onerror = () => {
+                    console.warn(`Failed to load image: ${src}`);
+                    resolve(); // Resolve anyway to not block
+                };
+                img.src = src;
+            });
+        });
+        
+        return Promise.all(loadPromises);
     }
     
     initializeEventListeners() {
@@ -25,9 +83,14 @@ class NovelEngine {
         document.addEventListener('keydown', (e) => {
             if (this.currentStory) {
                 if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
                     this.nextScene();
                 } else if (e.key === 'Escape') {
                     this.exitStory();
+                } else if (e.key === 'a' || e.key === 'A') {
+                    this.toggleAutoMode();
+                } else if (e.key === 's' || e.key === 'S') {
+                    this.toggleSkipMode();
                 }
             }
         });
@@ -40,6 +103,22 @@ class NovelEngine {
             this.displayStories(stories);
         } catch (error) {
             console.error('Failed to load stories:', error);
+            this.displayError('ストーリーの読み込みに失敗しました。');
+        }
+    }
+    
+    displayError(message) {
+        const grid = document.getElementById('stories-grid');
+        if (grid) {
+            grid.innerHTML = `
+                <div class="col-span-full text-center text-red-400">
+                    <i class="fas fa-exclamation-triangle text-4xl mb-4"></i>
+                    <p>${message}</p>
+                    <button onclick="location.reload()" class="mt-4 px-4 py-2 bg-red-800 hover:bg-red-700 rounded-lg">
+                        再読み込み
+                    </button>
+                </div>
+            `;
         }
     }
     
@@ -69,6 +148,9 @@ class NovelEngine {
             card.style.animationDelay = `${index * 0.1}s`;
             card.classList.add('fade-in');
             
+            // Use actual thumbnails if available, otherwise use placeholder
+            const thumbnailSrc = this.getImagePath(story.thumbnail) || '/static/images/placeholder.svg';
+            
             card.innerHTML = `
                 <div class="text-center mb-4">
                     <i class="fas ${categoryIcons[story.category]} text-4xl ${categoryColors[story.category]}"></i>
@@ -88,6 +170,26 @@ class NovelEngine {
         });
     }
     
+    getImagePath(path) {
+        if (!path) return null;
+        
+        // Check if the image exists by trying to match with actual files
+        const actualImages = {
+            '/static/images/hanako_thumb.jpg': '/static/images/hanako.jpg',
+            '/static/images/stairs_thumb.jpg': '/static/images/school_hallway.jpg',
+            '/static/images/music_thumb.jpg': '/static/images/music_room.jpg',
+            '/static/images/sea_thumb.jpg': '/static/images/beach.jpg',
+            '/static/images/mountain_thumb.jpg': '/static/images/camp.jpg',
+            '/static/images/obon_thumb.jpg': '/static/images/obon_night.jpg',
+            '/static/images/kuchisake_thumb.jpg': '/static/images/kuchisake.jpg',
+            '/static/images/teketeke_thumb.jpg': '/static/images/teketeke.jpg',
+            '/static/images/beethoven.jpg': '/static/images/music_room.jpg',
+            '/static/images/void.jpg': '/static/images/dark_forest.jpg'
+        };
+        
+        return actualImages[path] || path;
+    }
+    
     async startStory(storyId) {
         try {
             const response = await fetch(`/api/stories/${storyId}`);
@@ -95,14 +197,21 @@ class NovelEngine {
             this.currentSceneIndex = 0;
             this.sceneHistory = [];
             
-            // Hide selection screen, show novel screen
+            // Show loading indicator
             document.getElementById('story-selection').classList.add('hidden');
             document.getElementById('novel-container').classList.remove('hidden');
+            
+            const textElement = document.getElementById('story-text');
+            textElement.innerHTML = '<div class="text-center"><i class="fas fa-spinner fa-spin text-4xl"></i><p class="mt-4">読み込み中...</p></div>';
+            
+            // Preload story assets
+            await this.preloadStoryAssets(this.currentStory);
             
             // Start from the first scene
             this.playScene(this.currentStory.scenes[0]);
         } catch (error) {
             console.error('Failed to load story:', error);
+            this.displayError('ストーリーの読み込みに失敗しました。');
         }
     }
     
@@ -115,12 +224,13 @@ class NovelEngine {
         this.currentScene = scene;
         this.sceneHistory.push(scene.id);
         
-        // Update background
+        // Update background with fallback
         if (scene.background) {
-            this.updateBackground(scene.background);
+            const actualPath = this.getImagePath(scene.background);
+            this.updateBackground(actualPath || '/static/images/placeholder.svg');
         }
         
-        // Play BGM
+        // Play BGM with error handling
         if (scene.bgm !== undefined) {
             this.playBGM(scene.bgm);
         }
@@ -148,7 +258,11 @@ class NovelEngine {
             document.getElementById('next-button').classList.add('hidden');
         } else {
             document.getElementById('choices-container').classList.add('hidden');
-            document.getElementById('next-button').classList.remove('hidden');
+            if (scene.nextScene) {
+                document.getElementById('next-button').classList.remove('hidden');
+            } else {
+                document.getElementById('next-button').classList.add('hidden');
+            }
         }
     }
     
@@ -158,6 +272,9 @@ class NovelEngine {
         
         if (this.skipMode) {
             textElement.textContent = text;
+            if (this.autoMode && this.currentScene.nextScene) {
+                setTimeout(() => this.nextScene(), 1500);
+            }
         } else {
             // Typewriter effect
             let charIndex = 0;
@@ -167,7 +284,7 @@ class NovelEngine {
                     charIndex++;
                 } else {
                     clearInterval(typeInterval);
-                    if (this.autoMode) {
+                    if (this.autoMode && this.currentScene.nextScene) {
                         setTimeout(() => this.nextScene(), 3000);
                     }
                 }
@@ -180,10 +297,12 @@ class NovelEngine {
         container.innerHTML = '';
         container.classList.remove('hidden');
         
-        choices.forEach(choice => {
+        choices.forEach((choice, index) => {
             const button = document.createElement('button');
             button.className = 'choice-button w-full p-4 rounded-lg text-left';
             button.innerHTML = `<i class="fas fa-chevron-right mr-2"></i>${choice.text}`;
+            button.style.animationDelay = `${index * 0.1}s`;
+            button.classList.add('fade-in');
             button.addEventListener('click', () => this.makeChoice(choice));
             container.appendChild(button);
         });
@@ -191,13 +310,23 @@ class NovelEngine {
     
     makeChoice(choice) {
         const nextScene = this.currentStory.scenes.find(s => s.id === choice.nextScene);
-        this.playScene(nextScene);
+        if (nextScene) {
+            this.playScene(nextScene);
+        } else {
+            console.warn(`Scene not found: ${choice.nextScene}`);
+            this.endStory();
+        }
     }
     
     nextScene() {
         if (this.currentScene && this.currentScene.nextScene) {
             const nextScene = this.currentStory.scenes.find(s => s.id === this.currentScene.nextScene);
-            this.playScene(nextScene);
+            if (nextScene) {
+                this.playScene(nextScene);
+            } else {
+                console.warn(`Next scene not found: ${this.currentScene.nextScene}`);
+                this.endStory();
+            }
         } else {
             this.endStory();
         }
@@ -208,8 +337,10 @@ class NovelEngine {
             this.sceneHistory.pop(); // Remove current scene
             const previousSceneId = this.sceneHistory[this.sceneHistory.length - 1];
             const previousScene = this.currentStory.scenes.find(s => s.id === previousSceneId);
-            this.sceneHistory.pop(); // Remove it again so playScene can add it back
-            this.playScene(previousScene);
+            if (previousScene) {
+                this.sceneHistory.pop(); // Remove it again so playScene can add it back
+                this.playScene(previousScene);
+            }
         } else {
             this.exitStory();
         }
@@ -221,8 +352,10 @@ class NovelEngine {
         document.getElementById('story-selection').classList.remove('hidden');
         
         // Stop BGM
-        this.bgmPlayer.pause();
-        this.bgmPlayer.src = '';
+        if (this.bgmPlayer) {
+            this.bgmPlayer.pause();
+            this.bgmPlayer.src = '';
+        }
         
         // Reset state
         this.currentStory = null;
@@ -230,15 +363,30 @@ class NovelEngine {
         this.sceneHistory = [];
         this.autoMode = false;
         this.skipMode = false;
+        
+        // Reset UI
+        const autoButton = document.getElementById('auto-button');
+        if (autoButton) {
+            autoButton.classList.remove('bg-red-800');
+            autoButton.classList.add('bg-gray-800');
+            autoButton.innerHTML = '<i class="fas fa-play mr-2"></i>オート';
+        }
+        
+        const skipButton = document.getElementById('skip-button');
+        if (skipButton) {
+            skipButton.classList.remove('bg-red-800');
+            skipButton.classList.add('bg-gray-800');
+        }
     }
     
     endStory() {
         // Show completion message
         const textElement = document.getElementById('story-text');
         textElement.innerHTML = `
-            <div class="text-center py-8">
+            <div class="text-center py-8 fade-in">
                 <i class="fas fa-book text-4xl text-red-400 mb-4"></i>
                 <p class="text-xl mb-4">物語は終わりました</p>
+                <p class="text-gray-400 mb-6">他の怪談話もお楽しみください</p>
                 <button onclick="novelEngine.exitStory()" class="px-6 py-3 bg-red-800 hover:bg-red-700 rounded-lg transition">
                     <i class="fas fa-home mr-2"></i>物語選択へ戻る
                 </button>
@@ -248,23 +396,71 @@ class NovelEngine {
         document.getElementById('choices-container').classList.add('hidden');
         document.getElementById('next-button').classList.add('hidden');
         document.getElementById('character-name').classList.add('hidden');
+        
+        // Stop auto mode
+        this.autoMode = false;
+        this.skipMode = false;
     }
     
     updateBackground(backgroundUrl) {
         const container = document.getElementById('novel-container');
-        // Create a dark gradient overlay for better text readability
-        container.style.backgroundImage = `linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.7)), url('${backgroundUrl}')`;
+        // Check if image is cached
+        if (this.imageCache[backgroundUrl]) {
+            container.style.backgroundImage = `linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.7)), url('${backgroundUrl}')`;
+        } else {
+            // Use placeholder while loading
+            container.style.backgroundImage = `linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.7)), url('/static/images/placeholder.svg')`;
+            // Load the actual image
+            const img = new Image();
+            img.onload = () => {
+                container.style.backgroundImage = `linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.7)), url('${backgroundUrl}')`;
+            };
+            img.src = backgroundUrl;
+        }
     }
     
     playBGM(bgmUrl) {
-        if (bgmUrl === null) {
-            this.bgmPlayer.pause();
-            this.bgmPlayer.src = '';
-        } else if (bgmUrl && this.bgmPlayer.src !== bgmUrl) {
-            this.bgmPlayer.src = bgmUrl;
-            this.bgmPlayer.volume = 0.3;
-            this.bgmPlayer.play().catch(e => console.log('BGM autoplay prevented:', e));
+        if (!this.bgmPlayer) return;
+        
+        try {
+            if (bgmUrl === null) {
+                this.bgmPlayer.pause();
+                this.bgmPlayer.src = '';
+            } else if (bgmUrl) {
+                const actualPath = this.getAudioPath(bgmUrl);
+                if (this.bgmPlayer.src !== actualPath) {
+                    this.bgmPlayer.src = actualPath;
+                    this.bgmPlayer.volume = 0.3;
+                    this.bgmPlayer.play().catch(e => {
+                        console.log('BGM autoplay prevented:', e);
+                    });
+                }
+            }
+        } catch (error) {
+            console.error('Error playing BGM:', error);
         }
+    }
+    
+    getAudioPath(path) {
+        // Map to actual audio files
+        const actualAudio = {
+            '/static/audio/bgm_dark.mp3': '/static/audio/bgm_suspense.mp3',
+            '/static/audio/bgm_piano.mp3': '/static/audio/bgm_suspense.mp3',
+            '/static/audio/bgm_wave.mp3': '/static/audio/bgm_suspense.mp3',
+            '/static/audio/bgm_forest.mp3': '/static/audio/bgm_suspense.mp3',
+            '/static/audio/bgm_obon.mp3': '/static/audio/bgm_suspense.mp3',
+            '/static/audio/bgm_urban.mp3': '/static/audio/bgm_suspense.mp3',
+            '/static/audio/bgm_tension.mp3': '/static/audio/bgm_suspense.mp3',
+            '/static/audio/bgm_horror.mp3': '/static/audio/bgm_suspense.mp3',
+            '/static/audio/ghost_voice.mp3': '/static/audio/scream.mp3',
+            '/static/audio/monster_voice.mp3': '/static/audio/scream.mp3',
+            '/static/audio/horror_scream.mp3': '/static/audio/scream.mp3',
+            '/static/audio/teketeke.mp3': '/static/audio/creak.mp3',
+            '/static/audio/thunder.mp3': '/static/audio/creak.mp3',
+            '/static/audio/elise.mp3': '/static/audio/bgm_suspense.mp3'
+        };
+        
+        return actualAudio[path] || path;
     }
     
     applyEffect(effect) {
@@ -290,10 +486,17 @@ class NovelEngine {
                 break;
                 
             case 'sound':
-                if (effect.sound) {
-                    this.sfxPlayer.src = effect.sound;
-                    this.sfxPlayer.volume = 0.5;
-                    this.sfxPlayer.play().catch(e => console.log('SFX autoplay prevented:', e));
+                if (effect.sound && this.sfxPlayer) {
+                    try {
+                        const actualPath = this.getAudioPath(effect.sound);
+                        this.sfxPlayer.src = actualPath;
+                        this.sfxPlayer.volume = 0.5;
+                        this.sfxPlayer.play().catch(e => {
+                            console.log('SFX autoplay prevented:', e);
+                        });
+                    } catch (error) {
+                        console.error('Error playing SFX:', error);
+                    }
                 }
                 break;
         }
@@ -302,31 +505,38 @@ class NovelEngine {
     toggleAutoMode() {
         this.autoMode = !this.autoMode;
         const button = document.getElementById('auto-button');
-        if (this.autoMode) {
-            button.classList.add('bg-red-800');
-            button.classList.remove('bg-gray-800');
-            button.innerHTML = '<i class="fas fa-pause mr-2"></i>オート中';
-        } else {
-            button.classList.remove('bg-red-800');
-            button.classList.add('bg-gray-800');
-            button.innerHTML = '<i class="fas fa-play mr-2"></i>オート';
+        if (button) {
+            if (this.autoMode) {
+                button.classList.add('bg-red-800');
+                button.classList.remove('bg-gray-800');
+                button.innerHTML = '<i class="fas fa-pause mr-2"></i>オート中';
+            } else {
+                button.classList.remove('bg-red-800');
+                button.classList.add('bg-gray-800');
+                button.innerHTML = '<i class="fas fa-play mr-2"></i>オート';
+            }
         }
     }
     
     toggleSkipMode() {
         this.skipMode = !this.skipMode;
         const button = document.getElementById('skip-button');
-        if (this.skipMode) {
-            button.classList.add('bg-red-800');
-            button.classList.remove('bg-gray-800');
-            this.typewriterSpeed = 0;
-        } else {
-            button.classList.remove('bg-red-800');
-            button.classList.add('bg-gray-800');
-            this.typewriterSpeed = 50;
+        if (button) {
+            if (this.skipMode) {
+                button.classList.add('bg-red-800');
+                button.classList.remove('bg-gray-800');
+                this.typewriterSpeed = 0;
+            } else {
+                button.classList.remove('bg-red-800');
+                button.classList.add('bg-gray-800');
+                this.typewriterSpeed = 50;
+            }
         }
     }
 }
 
 // Initialize the novel engine when the page loads
-const novelEngine = new NovelEngine();
+let novelEngine;
+document.addEventListener('DOMContentLoaded', () => {
+    novelEngine = new NovelEngine();
+});
