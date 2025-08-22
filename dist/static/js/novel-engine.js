@@ -79,6 +79,28 @@ class NovelEngine {
         document.getElementById('auto-button').addEventListener('click', () => this.toggleAutoMode());
         document.getElementById('skip-button').addEventListener('click', () => this.toggleSkipMode());
         
+        // Touch events for mobile swipe navigation
+        let touchStartX = 0;
+        let touchEndX = 0;
+        
+        const novelContainer = document.getElementById('novel-container');
+        novelContainer.addEventListener('touchstart', (e) => {
+            touchStartX = e.changedTouches[0].screenX;
+        }, { passive: true });
+        
+        novelContainer.addEventListener('touchend', (e) => {
+            touchEndX = e.changedTouches[0].screenX;
+            this.handleSwipe(touchStartX, touchEndX);
+        }, { passive: true });
+        
+        // Tap to advance on mobile (story text area only)
+        document.getElementById('story-text').addEventListener('click', (e) => {
+            // Only advance on tap if on mobile and not clicking a choice button
+            if (window.innerWidth <= 768 && !e.target.closest('.choice-button')) {
+                this.nextScene();
+            }
+        });
+        
         // Keyboard controls
         document.addEventListener('keydown', (e) => {
             if (this.currentStory) {
@@ -94,6 +116,17 @@ class NovelEngine {
                 }
             }
         });
+    }
+    
+    handleSwipe(startX, endX) {
+        const swipeThreshold = 50;
+        if (endX < startX - swipeThreshold) {
+            // Swipe left - next scene
+            this.nextScene();
+        } else if (endX > startX + swipeThreshold) {
+            // Swipe right - previous scene
+            this.goBack();
+        }
     }
     
     async loadStories() {
@@ -144,7 +177,7 @@ class NovelEngine {
         
         stories.forEach((story, index) => {
             const card = document.createElement('div');
-            card.className = 'story-card rounded-lg p-6 cursor-pointer';
+            card.className = 'story-card rounded-lg p-4 md:p-6 cursor-pointer';
             card.style.animationDelay = `${index * 0.1}s`;
             card.classList.add('fade-in');
             
@@ -152,15 +185,15 @@ class NovelEngine {
             const thumbnailSrc = this.getImagePath(story.thumbnail) || '/static/images/placeholder.svg';
             
             card.innerHTML = `
-                <div class="text-center mb-4">
-                    <i class="fas ${categoryIcons[story.category]} text-4xl ${categoryColors[story.category]}"></i>
+                <div class="text-center mb-3 md:mb-4">
+                    <i class="fas ${categoryIcons[story.category]} text-3xl md:text-4xl ${categoryColors[story.category]}"></i>
                 </div>
-                <h3 class="text-xl font-bold text-red-400 mb-2">${story.title}</h3>
-                <p class="text-sm text-gray-500 mb-3">${story.subtitle}</p>
-                <p class="text-gray-300 text-sm">${story.description}</p>
-                <div class="mt-4 text-center">
-                    <button class="px-4 py-2 bg-red-800 hover:bg-red-700 rounded-lg transition">
-                        <i class="fas fa-book-open mr-2"></i>読む
+                <h3 class="text-lg md:text-xl font-bold text-red-400 mb-2">${story.title}</h3>
+                <p class="text-xs md:text-sm text-gray-500 mb-2 md:mb-3">${story.subtitle}</p>
+                <p class="text-gray-300 text-xs md:text-sm line-clamp-3">${story.description}</p>
+                <div class="mt-3 md:mt-4 text-center">
+                    <button class="px-3 md:px-4 py-2 bg-red-800 hover:bg-red-700 rounded-lg transition text-sm md:text-base">
+                        <i class="fas fa-book-open mr-1 md:mr-2"></i>読む
                     </button>
                 </div>
             `;
@@ -311,8 +344,8 @@ class NovelEngine {
         
         choices.forEach((choice, index) => {
             const button = document.createElement('button');
-            button.className = 'choice-button w-full p-4 rounded-lg text-left';
-            button.innerHTML = `<i class="fas fa-chevron-right mr-2"></i>${choice.text}`;
+            button.className = 'choice-button w-full p-3 md:p-4 rounded-lg text-left text-sm md:text-base';
+            button.innerHTML = `<i class="fas fa-chevron-right mr-1 md:mr-2"></i>${choice.text}`;
             button.style.animationDelay = `${index * 0.1}s`;
             button.classList.add('fade-in');
             button.addEventListener('click', () => this.makeChoice(choice));
