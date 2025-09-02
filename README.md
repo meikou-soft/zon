@@ -187,6 +187,23 @@ npm run build
 npm run deploy
 ```
 
+### Azure Container Apps でのデプロイ
+
+1. Docker イメージのビルド
+```bash
+docker build -t <registry>/summer-horror-novel:latest .
+```
+
+2. Azure Container Registry へプッシュ
+```bash
+docker push <registry>/summer-horror-novel:latest
+```
+
+3. コンテナアプリの作成
+```bash
+az containerapp up --name summer-horror-novel --resource-group <リソースグループ> --environment <環境名> --image <registry>/summer-horror-novel:latest --target-port 3000 --ingress external
+```
+
 ## デバッグ情報
 
 ### 解決済みの問題
