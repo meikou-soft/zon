@@ -11,9 +11,9 @@
   - 完全なエラーハンドリングと画像プリロード
   - レスポンシブデザイン
 
-## 開発URL
-- **開発サーバー**: https://3000-ijqajjsope6ychu5p8d6o-6532622b.e2b.dev
-- **ローカル**: http://localhost:3000
+## デモURL
+- **GitHub Pages**: https://meikou-soft.github.io/zon/
+- **ローカル開発**: http://localhost:5173
 - **ステータス**: ✅ 完全動作中
 
 ## 収録ストーリー（全話完成）
